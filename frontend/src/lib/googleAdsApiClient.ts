@@ -46,6 +46,36 @@ export interface ConversionDetail {
   cost: number;
 }
 
+// Extended client interface for Google Ads accounts
+export interface ExtendedClient {
+  id: string;
+  name: string;
+  company: string;
+  totalConversions: number;
+  costPerLead: number;
+  totalSpend: number;
+  dateOnboarded: string;
+  trends: {
+    totalConversions: number;
+    costPerLead: number;
+    totalSpend: number;
+  };
+  isGoogleAdsAccount?: boolean;
+  formConversions?: number;
+  callConversions?: number;
+  assignedTeamMember?: string;
+  isArchived?: boolean;
+}
+
+// Google Ads API Client interface
+export interface GoogleAdsClient {
+  fetchAccounts: () => Promise<{ success: boolean; accounts: any[]; error?: string }>;
+  fetchMetrics: (period: string) => Promise<any>;
+  saveCredentials: (credentials: any) => Promise<boolean>;
+  setSelectedAccountId: (accountId: string) => void;
+  getSelectedAccountId: () => string | null;
+}
+
 // Time period types
 export type TimePeriod = '7days' | '30days' | 'month';
 

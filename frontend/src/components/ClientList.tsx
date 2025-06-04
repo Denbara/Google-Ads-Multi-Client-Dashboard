@@ -63,7 +63,7 @@ const ClientList: React.FC<ClientListProps> = ({ clients, onClientSelect }) => {
         
         if (result.success && result.accounts.length > 0) {
           // Convert Google Ads accounts to client format
-          const googleAdsClients: ExtendedClient[] = result.accounts.map(account => ({
+          const googleAdsClients: ExtendedClient[] = result.accounts.map((account: any) => ({
             id: account.id,
             name: account.name,
             company: `Google Ads Account`,
