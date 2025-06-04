@@ -3,9 +3,5 @@
   "version": "1.0.0",
   "engines": {
     "node": "18.x"
-  },
-  "scripts": {
-    "start": "cd backend && npm start"
-    "postinstall": "cd backend && npm install"
   }
 }
