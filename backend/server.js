@@ -1,379 +1,332 @@
-// Production-ready Google Ads API Server
 const express = require('express');
 const cors = require('cors');
-const { GoogleAdsApi } = require('google-ads-api');
-const dotenv = require('dotenv');
 const crypto = require('crypto');
-const bodyParser = require('body-parser');
 const fs = require('fs');
 const path = require('path');
+const { OAuth2Client } = require('google-auth-library');
+const oauth2Helper = require('./oauth2Helper');
 
-// Load environment variables
-dotenv.config();
-
-// Initialize Express app
 const app = express();
-const PORT = process.env.PORT || 3001;
-
-// Enhanced CORS configuration for production
-app.use(cors({
-  // Allow all production and development domains
-  origin: [
-    'https://aqassvhw.manus.space',
-    'https://nszrknkg.manus.space',
-    'https://ctiqwrin.manus.space',
-    'https://5180-ib7eoxy941w126b5aomry-07af5fe8.manusvm.computer',
-    'https://5173-iu13e8wey282ke9jnfhby-07af5fe8.manusvm.computer',
-    'http://localhost:5180',
-    'http://localhost:5173'
-  ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
 
 // Middleware
-app.use(bodyParser.json());
+app.use(express.json());
 
-// Secure storage for API credentials (in production, use a database)
-const CREDENTIALS_FILE = path.join(__dirname, 'credentials.json');
-// Fix encryption key length to be exactly 32 bytes (256 bits) for AES-256-CBC
-const ENCRYPTION_KEY = (process.env.ENCRYPTION_KEY || 'secure-production-encryption-key-for-google-ads-api').slice(0, 32).padEnd(32, '0');
+// CORS configuration
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',') 
+  : ['http://localhost:5173', 'http://localhost:5180'];
 
-// Encryption utilities
-const encryptData = (data) => {
-  const iv = crypto.randomBytes(16);
+app.use(cors({
+  origin: function(origin, callback ) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  credentials: true
+}));
+
+// Encryption setup
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6'; // Must be 32 bytes for aes-256-cbc
+const IV_LENGTH = 16;
+
+function encrypt(text) {
+  const iv = crypto.randomBytes(IV_LENGTH);
   const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
-  let encrypted = cipher.update(JSON.stringify(data));
+  let encrypted = cipher.update(text);
   encrypted = Buffer.concat([encrypted, cipher.final()]);
-  return { iv: iv.toString('hex'), data: encrypted.toString('hex') };
-};
+  return iv.toString('hex') + ':' + encrypted.toString('hex');
+}
 
-const decryptData = (encryptedData) => {
+function decrypt(text) {
   try {
-    const iv = Buffer.from(encryptedData.iv, 'hex');
-    const encryptedText = Buffer.from(encryptedData.data, 'hex');
+    const textParts = text.split(':');
+    const iv = Buffer.from(textParts.shift(), 'hex');
+    const encryptedText = Buffer.from(textParts.join(':'), 'hex');
     const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
     let decrypted = decipher.update(encryptedText);
     decrypted = Buffer.concat([decrypted, decipher.final()]);
-    return JSON.parse(decrypted.toString());
+    return decrypted.toString();
   } catch (error) {
     console.error('Decryption error:', error);
     return null;
   }
-};
+}
 
-// Save credentials securely
-const saveCredentials = (credentials) => {
+// Credential storage
+const DS_STORE_PATH = path.join(__dirname, '.DS_Store');
+
+function saveCredentials(credentials) {
   try {
-    const encrypted = encryptData(credentials);
-    fs.writeFileSync(CREDENTIALS_FILE, JSON.stringify(encrypted));
+    const encryptedData = encrypt(JSON.stringify(credentials));
+    fs.writeFileSync(DS_STORE_PATH, encryptedData);
     return true;
   } catch (error) {
     console.error('Error saving credentials:', error);
     return false;
   }
-};
+}
 
-// Load credentials securely
-const loadCredentials = () => {
+function getCredentials() {
   try {
-    if (fs.existsSync(CREDENTIALS_FILE)) {
-      const encrypted = JSON.parse(fs.readFileSync(CREDENTIALS_FILE));
-      return decryptData(encrypted);
+    if (!fs.existsSync(DS_STORE_PATH)) {
+      return null;
     }
-    return null;
+    const encryptedData = fs.readFileSync(DS_STORE_PATH, 'utf8');
+    const decryptedData = decrypt(encryptedData);
+    if (!decryptedData) return null;
+    return JSON.parse(decryptedData);
   } catch (error) {
-    console.error('Error loading credentials:', error);
+    console.error('Error reading credentials:', error);
     return null;
   }
-};
-
-// Initialize Google Ads API client
-const initializeGoogleAdsClient = (credentials) => {
-  try {
-    return new GoogleAdsApi({
-      client_id: credentials.clientId,
-      client_secret: credentials.clientSecret,
-      developer_token: credentials.developerToken
-    });
-  } catch (error) {
-    console.error('Error initializing Google Ads client:', error);
-    return null;
-  }
-};
-
-// Get customer instance with refresh token
-const getCustomer = (client, credentials) => {
-  try {
-    return client.Customer({
-      customer_id: credentials.managerId || '',
-      refresh_token: credentials.refreshToken,
-      login_customer_id: credentials.managerId || ''
-    });
-  } catch (error) {
-    console.error('Error getting customer instance:', error);
-    return null;
-  }
-};
+}
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', environment: process.env.NODE_ENV, timestamp: new Date().toISOString() });
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// API Routes
+// API endpoints
+app.post('/api/credentials', (req, res) => {
+  const { developerToken, clientId, clientSecret, refreshToken } = req.body;
+  
+  if (!developerToken || !clientId || !clientSecret || !refreshToken) {
+    return res.status(400).json({ error: 'Missing required credentials' });
+  }
+  
+  const credentials = { developerToken, clientId, clientSecret, refreshToken };
+  const saved = saveCredentials(credentials);
+  
+  if (saved) {
+    res.json({ success: true, message: 'Credentials saved successfully' });
+  } else {
+    res.status(500).json({ error: 'Failed to save credentials' });
+  }
+});
 
-// Save API credentials
-app.post('/api/credentials', async (req, res) => {
+app.get('/api/credentials', (req, res) => {
+  const credentials = getCredentials();
+  if (credentials) {
+    // Don't send the actual credentials, just confirmation they exist
+    res.json({ 
+      exists: true, 
+      hasRefreshToken: !!credentials.refreshToken,
+      hasDeveloperToken: !!credentials.developerToken,
+      hasClientId: !!credentials.clientId,
+      hasClientSecret: !!credentials.clientSecret
+    });
+  } else {
+    res.json({ exists: false });
+  }
+});
+
+app.delete('/api/credentials', (req, res) => {
   try {
-    const credentials = req.body;
+    if (fs.existsSync(DS_STORE_PATH)) {
+      fs.unlinkSync(DS_STORE_PATH);
+    }
+    res.json({ success: true, message: 'Credentials deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting credentials:', error);
+    res.status(500).json({ error: 'Failed to delete credentials' });
+  }
+});
+
+app.post('/api/test-connection', async (req, res) => {
+  try {
+    const credentials = getCredentials();
+    if (!credentials) {
+      return res.status(400).json({ error: 'No credentials found' });
+    }
+
+    const { developerToken, clientId, clientSecret, refreshToken } = credentials;
     
-    // Validate required fields
-    if (!credentials.clientId || !credentials.clientSecret || 
-        !credentials.developerToken || !credentials.refreshToken) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Missing required credentials' 
-      });
+    // Create OAuth2 client
+    const oAuth2Client = new OAuth2Client(
+      clientId,
+      clientSecret,
+      'urn:ietf:wg:oauth:2.0:oob'
+    );
+    
+    // Set refresh token
+    oAuth2Client.setCredentials({
+      refresh_token: refreshToken
+    });
+    
+    // Get a valid access token
+    const tokenResponse = await oAuth2Client.getAccessToken();
+    const accessToken = tokenResponse.token;
+    
+    if (!accessToken) {
+      return res.status(401).json({ error: 'Failed to get access token' });
     }
     
-    // Save credentials
-    const saved = saveCredentials(credentials);
-    if (!saved) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Failed to save credentials' 
-      });
-    }
+    // Test the connection to Google Ads API
+    const accounts = await oauth2Helper.getAccountList(accessToken, developerToken);
     
     res.json({ 
       success: true, 
-      message: 'API credentials saved successfully' 
+      message: 'Connection successful', 
+      accounts: accounts
     });
   } catch (error) {
-    console.error('Error saving credentials:', error);
+    console.error('API connection test error:', error);
     res.status(500).json({ 
-      success: false, 
-      message: 'Internal server error', 
-      error: error.message 
+      error: 'Connection test failed', 
+      message: error.message || 'Unknown error',
+      details: error.response?.data || {}
     });
   }
 });
 
-// Test API connection
-app.post('/api/test-connection', async (req, res) => {
-  try {
-    const credentials = req.body;
-    
-    // Validate required fields
-    if (!credentials.clientId || !credentials.clientSecret || 
-        !credentials.developerToken || !credentials.refreshToken) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Missing required credentials' 
-      });
-    }
-    
-    // Initialize client
-    const client = initializeGoogleAdsClient(credentials);
-    if (!client) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Failed to initialize Google Ads client' 
-      });
-    }
-    
-    // Get customer instance
-    const customer = getCustomer(client, credentials);
-    if (!customer) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Failed to get customer instance' 
-      });
-    }
-    
-    // Test connection by listing accessible accounts
-    const accounts = await customer.listAccessibleCustomers();
-    
-    // Save credentials if connection is successful
-    saveCredentials(credentials);
-    
-    res.json({
-      success: true,
-      message: 'Successfully connected to Google Ads API',
-      accounts: accounts.resource_names.map(name => {
-        const id = name.split('/')[1];
-        return { id, name: `Account ${id}` };
-      }),
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error('Error testing connection:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to connect to Google Ads API', 
-      error: error.message 
-    });
-  }
-});
-
-// Get Google Ads accounts
 app.get('/api/accounts', async (req, res) => {
   try {
-    // Load saved credentials
-    const credentials = loadCredentials();
+    const credentials = getCredentials();
     if (!credentials) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'No API credentials found' 
-      });
+      return res.status(400).json({ error: 'No credentials found' });
     }
+
+    const { developerToken, clientId, clientSecret, refreshToken } = credentials;
     
-    // Initialize client
-    const client = initializeGoogleAdsClient(credentials);
-    if (!client) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Failed to initialize Google Ads client' 
-      });
-    }
+    // Create OAuth2 client
+    const oAuth2Client = new OAuth2Client(
+      clientId,
+      clientSecret,
+      'urn:ietf:wg:oauth:2.0:oob'
+    );
     
-    // Get customer instance
-    const customer = getCustomer(client, credentials);
-    if (!customer) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Failed to get customer instance' 
-      });
-    }
-    
-    // List accessible accounts
-    const accounts = await customer.listAccessibleCustomers();
-    
-    res.json({
-      success: true,
-      accounts: accounts.resource_names.map(name => {
-        const id = name.split('/')[1];
-        return {
-          id,
-          name: `Account ${id}`,
-          type: 'google_ads',
-          status: 'active'
-        };
-      })
+    // Set refresh token
+    oAuth2Client.setCredentials({
+      refresh_token: refreshToken
     });
+    
+    // Get a valid access token
+    const tokenResponse = await oAuth2Client.getAccessToken();
+    const accessToken = tokenResponse.token;
+    
+    if (!accessToken) {
+      return res.status(401).json({ error: 'Failed to get access token' });
+    }
+    
+    // Get accounts from Google Ads API
+    const accounts = await oauth2Helper.getAccountList(accessToken, developerToken);
+    
+    res.json(accounts);
   } catch (error) {
     console.error('Error fetching accounts:', error);
     res.status(500).json({ 
-      success: false, 
-      message: 'Failed to fetch Google Ads accounts', 
-      error: error.message 
+      error: 'Failed to fetch accounts', 
+      message: error.message || 'Unknown error',
+      details: error.response?.data || {}
     });
   }
 });
 
-// Get account metrics
 app.get('/api/metrics/:accountId', async (req, res) => {
   try {
     const { accountId } = req.params;
-    const { period } = req.query;
+    const credentials = getCredentials();
     
-    // Load saved credentials
-    const credentials = loadCredentials();
     if (!credentials) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'No API credentials found' 
-      });
+      return res.status(400).json({ error: 'No credentials found' });
     }
+
+    const { developerToken, clientId, clientSecret, refreshToken } = credentials;
     
-    // Initialize client
-    const client = initializeGoogleAdsClient(credentials);
-    if (!client) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Failed to initialize Google Ads client' 
-      });
-    }
+    // Create OAuth2 client
+    const oAuth2Client = new OAuth2Client(
+      clientId,
+      clientSecret,
+      'urn:ietf:wg:oauth:2.0:oob'
+    );
     
-    // Get customer instance
-    const customer = getCustomer(client, credentials);
-    if (!customer) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Failed to get customer instance' 
-      });
-    }
-    
-    // Determine date range based on period
-    let dateRange;
-    const today = new Date();
-    const endDate = today.toISOString().split('T')[0];
-    
-    switch (period) {
-      case '7days':
-        const sevenDaysAgo = new Date(today);
-        sevenDaysAgo.setDate(today.getDate() - 7);
-        dateRange = `date_range: { start_date: "${sevenDaysAgo.toISOString().split('T')[0]}", end_date: "${endDate}" }`;
-        break;
-      case '30days':
-        const thirtyDaysAgo = new Date(today);
-        thirtyDaysAgo.setDate(today.getDate() - 30);
-        dateRange = `date_range: { start_date: "${thirtyDaysAgo.toISOString().split('T')[0]}", end_date: "${endDate}" }`;
-        break;
-      case 'month':
-        const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-        dateRange = `date_range: { start_date: "${firstDayOfMonth.toISOString().split('T')[0]}", end_date: "${endDate}" }`;
-        break;
-      default:
-        const defaultDaysAgo = new Date(today);
-        defaultDaysAgo.setDate(today.getDate() - 30);
-        dateRange = `date_range: { start_date: "${defaultDaysAgo.toISOString().split('T')[0]}", end_date: "${endDate}" }`;
-    }
-    
-    // Query for metrics
-    const query = `
-      SELECT
-        metrics.impressions,
-        metrics.clicks,
-        metrics.cost_micros,
-        metrics.conversions,
-        metrics.all_conversions
-      FROM customer
-      WHERE ${dateRange}
-    `;
-    
-    const response = await customer.query(query);
-    
-    // Process and format the metrics
-    const metrics = response[0] || {};
-    const costMicros = parseInt(metrics.metrics?.cost_micros || 0);
-    const conversions = parseFloat(metrics.metrics?.conversions || 0);
-    const costPerConversion = conversions > 0 ? (costMicros / 1000000) / conversions : 0;
-    
-    res.json({
-      success: true,
-      metrics: {
-        impressions: parseInt(metrics.metrics?.impressions || 0),
-        clicks: parseInt(metrics.metrics?.clicks || 0),
-        cost: costMicros / 1000000, // Convert micros to standard currency
-        conversions: conversions,
-        costPerLead: costPerConversion,
-        period
-      }
+    // Set refresh token
+    oAuth2Client.setCredentials({
+      refresh_token: refreshToken
     });
+    
+    // Get a valid access token
+    const tokenResponse = await oAuth2Client.getAccessToken();
+    const accessToken = tokenResponse.token;
+    
+    if (!accessToken) {
+      return res.status(401).json({ error: 'Failed to get access token' });
+    }
+    
+    // Get metrics from Google Ads API
+    const metrics = await oauth2Helper.getAccountMetrics(
+      accessToken, 
+      developerToken,
+      accountId
+    );
+    
+    res.json(metrics);
   } catch (error) {
     console.error('Error fetching metrics:', error);
     res.status(500).json({ 
-      success: false, 
-      message: 'Failed to fetch account metrics', 
-      error: error.message 
+      error: 'Failed to fetch metrics', 
+      message: error.message || 'Unknown error',
+      details: error.response?.data || {}
     });
   }
 });
 
-// Start the server
+app.get('/api/conversions/:accountId', async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    const credentials = getCredentials();
+    
+    if (!credentials) {
+      return res.status(400).json({ error: 'No credentials found' });
+    }
+
+    const { developerToken, clientId, clientSecret, refreshToken } = credentials;
+    
+    // Create OAuth2 client
+    const oAuth2Client = new OAuth2Client(
+      clientId,
+      clientSecret,
+      'urn:ietf:wg:oauth:2.0:oob'
+    );
+    
+    // Set refresh token
+    oAuth2Client.setCredentials({
+      refresh_token: refreshToken
+    });
+    
+    // Get a valid access token
+    const tokenResponse = await oAuth2Client.getAccessToken();
+    const accessToken = tokenResponse.token;
+    
+    if (!accessToken) {
+      return res.status(401).json({ error: 'Failed to get access token' });
+    }
+    
+    // Get conversion data from Google Ads API
+    const conversions = await oauth2Helper.getConversionData(
+      accessToken, 
+      developerToken,
+      accountId
+    );
+    
+    res.json(conversions);
+  } catch (error) {
+    console.error('Error fetching conversions:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch conversions', 
+      message: error.message || 'Unknown error',
+      details: error.response?.data || {}
+    });
+  }
+});
+
+// Use Heroku's dynamic port or fallback to 3001
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
+  console.log(`Server listening on port ${PORT}`);
 });
