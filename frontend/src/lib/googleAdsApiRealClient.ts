@@ -16,8 +16,9 @@ export class GoogleAdsApiRealClient implements GoogleAdsApiClient {
   /**
    * Get the appropriate API base URL based on the current environment
    */
-  private getApiBaseUrl(): string {
-    const hostname = window.location.hostname;
+const getApiBaseUrl = () => {
+  return 'https://google-ads-api-server-8752abf48e8e.herokuapp.com/api';
+};
     
     // For production deployments
     if (hostname.includes('manus.space')) {
