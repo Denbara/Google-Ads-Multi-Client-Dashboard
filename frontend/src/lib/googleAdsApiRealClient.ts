@@ -3,8 +3,12 @@ import { ExtendedClient, GoogleAdsClient, GoogleAdsMetrics, ConversionData } fro
 
 // Function to get the API base URL based on the environment
 const getApiBaseUrl = (): string => {
-  // For Heroku deployment - update this with your actual Heroku app URL
-  return 'https://google-ads-api-server-8752abf48e8e.herokuapp.com/api';
+  // For production deployment - this will be replaced by GitHub Actions
+  if (process.env.NODE_ENV === 'production') {
+    return 'https://your-deployed-backend-url.com/api';
+  }
+  // For development
+  return 'http://localhost:3001/api';
 };
 
 // Real Google Ads API client implementation
