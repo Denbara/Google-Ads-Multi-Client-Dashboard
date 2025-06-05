@@ -4,7 +4,7 @@ import { ExtendedClient, GoogleAdsClient, GoogleAdsMetrics, ConversionData } fro
 // Function to get the API base URL based on the environment
 const getApiBaseUrl = (): string => {
   // For production deployment - this will be replaced by GitHub Actions
-  if (process.env.NODE_ENV === 'production') {
+  if (import.meta.env.MODE === 'production') {
     return 'https://your-deployed-backend-url.com/api';
   }
   // For development
