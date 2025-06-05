@@ -85,8 +85,8 @@ class CredentialsService {
   // Auto-save credentials to backend server (optional, for backup)
   async saveToBackend(credentials: ApiCredentials): Promise<boolean> {
     try {
-      const apiBaseUrl = process.env.NODE_ENV === 'production' 
-        ? 'https://your-deployed-backend-url.com/api'
+      const apiBaseUrl = import.meta.env.MODE === 'production' 
+        ? 'https://google-ads-api-server-8752abf48e8e.herokuapp.com/api'
         : 'http://localhost:3001/api';
 
       const response = await fetch(`${apiBaseUrl}/credentials`, {

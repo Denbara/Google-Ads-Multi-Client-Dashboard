@@ -7,6 +7,7 @@ import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { googleAdsApiProxy, ConnectionTestResult } from "../lib/apiProxy";
 import { googleAdsApiRealClient } from "../lib/googleAdsApiRealClient";
+import { credentialsService } from "../lib/credentialsService";
 
 interface ApiCredentials {
   clientId: string;
@@ -36,6 +37,37 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ onSave, initialCredentials })
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
   const [usingRealApi, setUsingRealApi] = useState(false);
+  
+  // Load saved credentials on mount
+  useEffect(() => {
+    const loadSavedCredentials = () => {
+      const savedCredentials = credentialsService.getValidCredentials();
+      if (savedCredentials) {
+        console.log('Loading saved credentials from localStorage');
+        setClientId(savedCredentials.clientId || '');
+        setClientSecret(savedCredentials.clientSecret || '');
+        setDeveloperToken(savedCredentials.developerToken || '');
+        setRefreshToken(savedCredentials.refreshToken || '');
+        setManagerId(savedCredentials.managerId || '');
+      } else {
+        console.log('No saved credentials found in localStorage');
+      }
+    };
+    
+    loadSavedCredentials();
+  }, []);
+  
+  // Update form when initialCredentials changes
+  useEffect(() => {
+    if (initialCredentials) {
+      console.log('Updating form with new initial credentials');
+      setClientId(initialCredentials.clientId || '');
+      setClientSecret(initialCredentials.clientSecret || '');
+      setDeveloperToken(initialCredentials.developerToken || '');
+      setRefreshToken(initialCredentials.refreshToken || '');
+      setManagerId(initialCredentials.managerId || '');
+    }
+  }, [initialCredentials]);
   
   // Load last connection time on component mount
   useEffect(() => {
@@ -76,6 +108,17 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ onSave, initialCredentials })
         // Also save to real API client
         try {
           await googleAdsApiRealClient.saveCredentials(credentials);
+          
+          // Test connection with new credentials
+          const testResult = await googleAdsApiRealClient.testConnection();
+          if (testResult.success) {
+            setTestResult({
+              success: true,
+              message: 'Successfully connected with new credentials',
+              accounts: testResult.accounts || [],
+              timestamp: Date.now()
+            });
+          }
         } catch (apiError) {
           console.error('Error saving to real API client:', apiError);
           throw new Error(`Failed to save credentials to API server: ${apiError instanceof Error ? apiError.message : 'Unknown error'}`);

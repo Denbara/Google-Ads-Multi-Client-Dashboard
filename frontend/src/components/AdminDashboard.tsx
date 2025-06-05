@@ -592,9 +592,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                       console.warn('Backend save failed, but localStorage save succeeded:', backendError);
                     }
                     
-                    // Reload the Google Ads service to use new credentials
-                    window.location.reload(); // Simple way to reinitialize services
-                    
                     // Show success message
                     toast({
                       title: "API Settings Saved",

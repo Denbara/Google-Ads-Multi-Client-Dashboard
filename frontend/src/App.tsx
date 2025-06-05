@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import { clientsService, Client, UserRole } from './lib/clientsService';
+import { credentialsService } from './lib/credentialsService';
 import ClientList from './components/ClientList';
 import DashboardLayout from './components/DashboardLayout';
 import MetricsOverview from './components/MetricsOverview';
@@ -255,7 +256,17 @@ const AdminDashboardPage: React.FC = () => {
   const navigate = useNavigate();
   
   const handleLogout = () => {
+    // Clear credentials from localStorage
+    credentialsService.clearCredentials();
+    
+    // Clear user role
+    localStorage.removeItem('userRole');
+    
+    console.log('User logged out, credentials cleared');
+    
+    // Navigate to home and force a reload to reset state
     navigate('/');
+    setTimeout(() => window.location.reload(), 100);
   };
   
   return <AdminDashboard onLogout={handleLogout} />;
@@ -270,12 +281,31 @@ function App() {
   // Check authentication on load
   useEffect(() => {
     const checkAuth = async () => {
-      // In a real app, this would check session/token
-      // For now, we'll just simulate with a timeout
-      setTimeout(() => {
+      try {
+        // Check if credentials exist in localStorage
+        const hasCredentials = credentialsService.hasCredentials();
+        const validCredentials = credentialsService.getValidCredentials();
+        
+        console.log('Checking authentication...', { hasCredentials, validCredentials: !!validCredentials });
+        
+        if (hasCredentials && validCredentials) {
+          // Auto-login if valid credentials exist
+          console.log('Valid credentials found, auto-logging in');
+          setIsAuthenticated(true);
+          
+          // Set user role from localStorage or default to admin for now
+          const userRole = localStorage.getItem('userRole') as UserRole || 'admin';
+          localStorage.setItem('userRole', userRole);
+        } else {
+          console.log('No valid credentials found, requiring login');
+          setIsAuthenticated(false);
+        }
+      } catch (error) {
+        console.error('Error checking authentication:', error);
         setIsAuthenticated(false);
+      } finally {
         setIsLoading(false);
-      }, 500);
+      }
     };
     
     checkAuth();
@@ -288,6 +318,10 @@ function App() {
     
     // Update the UserContext with the user role - direct approach
     localStorage.setItem('userRole', role);
+    
+    // Note: If credentials were entered via API Settings, they would already be saved
+    // This login is more for role-based access, the actual API credentials
+    // are managed separately via the credentialsService
     
     // Add a small delay to ensure state updates before navigation
     setTimeout(() => {
