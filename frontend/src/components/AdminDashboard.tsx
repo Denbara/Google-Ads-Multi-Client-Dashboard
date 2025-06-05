@@ -578,11 +578,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
           
           <TabsContent value="api" className="space-y-4">
             <ApiSettings 
-              initialCredentials={credentialsService.getCredentials() || undefined}
+              initialCredentials={credentialsService.getCredentialsSync() || undefined}
               onSave={async (credentials) => {
                 try {
                   // Store credentials securely using the credentials service
-                  const success = credentialsService.saveCredentials(credentials);
+                  const success = await credentialsService.saveCredentials(credentials);
                   
                   if (success) {
                     // Show success message
