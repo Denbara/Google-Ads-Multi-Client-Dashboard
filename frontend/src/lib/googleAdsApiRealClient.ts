@@ -5,8 +5,8 @@ import { ExtendedClient, GoogleAdsClient, GoogleAdsMetrics, ConversionData } fro
 const getApiBaseUrl = (): string => {
   // For production deployment - this will be replaced by GitHub Actions
   if (import.meta.env.MODE === 'production') {
-    return 'https://your-deployed-backend-url.com/api';
-  }
+    return 'https://google-ads-api-server-8752abf48e8e.herokuapp.com/api';
+}
   // For development
   return 'http://localhost:3001/api';
 };
