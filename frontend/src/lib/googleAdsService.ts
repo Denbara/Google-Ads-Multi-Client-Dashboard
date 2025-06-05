@@ -57,8 +57,8 @@ class GoogleAdsService {
   }
 
   // Load API credentials from secure storage
-  private loadCredentials() {
-    this.credentials = credentialsService.getCredentials();
+  private async loadCredentials() {
+    this.credentials = await credentialsService.getCredentials();
     
     // If credentials are available, configure the API clients
     if (this.credentials) {
@@ -143,8 +143,13 @@ class GoogleAdsService {
   }
 
   // Check if API credentials are configured
-  hasApiCredentials(): boolean {
-    return !!this.credentials || credentialsService.hasCredentials();
+  async hasApiCredentials(): Promise<boolean> {
+    return !!this.credentials || await credentialsService.hasCredentials();
+  }
+
+  // Synchronous version for backward compatibility
+  hasApiCredentialsSync(): boolean {
+    return !!this.credentials || credentialsService.hasCredentialsSync();
   }
 
   // Authenticate with password
@@ -162,7 +167,7 @@ class GoogleAdsService {
   // Fetch metrics overview data
   async getMetricsOverview(period: TimePeriod): Promise<GoogleAdsMetrics> {
     // Use the real API client to fetch real data if credentials are available and connected
-    if (this.hasApiCredentials() && this.isConnected) {
+    if (this.hasApiCredentialsSync() && this.isConnected) {
       try {
         const selectedAccountId = googleAdsApiRealClient.getSelectedAccountId();
         if (!selectedAccountId) {
@@ -201,7 +206,7 @@ class GoogleAdsService {
   // Fetch conversion chart data
   async getConversionChartData(period: TimePeriod): Promise<ConversionData[]> {
     // Use the real API client to fetch real data if credentials are available and connected
-    if (this.hasApiCredentials() && this.isConnected) {
+    if (this.hasApiCredentialsSync() && this.isConnected) {
       try {
         const selectedAccountId = googleAdsApiRealClient.getSelectedAccountId();
         if (!selectedAccountId) {
@@ -228,7 +233,7 @@ class GoogleAdsService {
   // Fetch cost per lead chart data
   async getCostPerLeadChartData(period: TimePeriod): Promise<CostPerLeadData[]> {
     // Use the real API client to fetch real data if credentials are available and connected
-    if (this.hasApiCredentials() && this.isConnected) {
+    if (this.hasApiCredentialsSync() && this.isConnected) {
       try {
         const selectedAccountId = googleAdsApiRealClient.getSelectedAccountId();
         if (!selectedAccountId) {
@@ -255,7 +260,7 @@ class GoogleAdsService {
   // Fetch recent conversions
   async getRecentConversions(period: TimePeriod): Promise<ConversionDetail[]> {
     // Use the real API client to fetch real data if credentials are available and connected
-    if (this.hasApiCredentials() && this.isConnected) {
+    if (this.hasApiCredentialsSync() && this.isConnected) {
       try {
         const selectedAccountId = googleAdsApiRealClient.getSelectedAccountId();
         if (!selectedAccountId) {
