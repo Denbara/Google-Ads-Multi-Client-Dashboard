@@ -25,20 +25,86 @@ class RealGoogleAdsApiClient implements GoogleAdsClient {
     return this.selectedAccountId;
   }
 
+  // Test the connection to the Google Ads API (used by ApiSettings)
+  async testConnection(): Promise<{ success: boolean; accounts?: any[]; error?: string }> {
+    try {
+      console.log('Testing connection to:', getApiBaseUrl());
+      const response = await axios.post(`${getApiBaseUrl()}/test-connection`, {}, {
+        timeout: 10000, // 10 second timeout
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.data.success) {
+        return {
+          success: true,
+          accounts: response.data.accounts || []
+        };
+      } else {
+        return { 
+          success: false, 
+          error: response.data.error || 'Connection failed' 
+        };
+      }
+    } catch (error) {
+      console.error('Real API connection failed:', error);
+      
+      let errorMessage = 'Network Error';
+      if (axios.isAxiosError(error)) {
+        if (error.code === 'ECONNREFUSED') {
+          errorMessage = 'Cannot connect to backend server. Make sure the backend is running on port 3001.';
+        } else if (error.response) {
+          errorMessage = `Server error: ${error.response.status} - ${error.response.data?.error || error.response.statusText}`;
+        } else if (error.request) {
+          errorMessage = 'No response from server. Check if backend is running.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      return { 
+        success: false, 
+        error: errorMessage
+      };
+    }
+  }
+
   // Fetch accounts from Google Ads API
   async fetchAccounts(): Promise<{ success: boolean; accounts: any[]; error?: string }> {
     try {
-      const response = await axios.get(`${getApiBaseUrl()}/accounts`);
+      console.log('Fetching accounts from:', getApiBaseUrl());
+      const response = await axios.get(`${getApiBaseUrl()}/accounts`, {
+        timeout: 15000, // 15 second timeout
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
       return {
         success: true,
         accounts: response.data || []
       };
     } catch (error) {
       console.error('Error fetching real accounts:', error);
+      
+      let errorMessage = 'Failed to fetch accounts';
+      if (axios.isAxiosError(error)) {
+        if (error.code === 'ECONNREFUSED') {
+          errorMessage = 'Cannot connect to backend server. Make sure the backend is running.';
+        } else if (error.response) {
+          errorMessage = `Server error: ${error.response.status} - ${error.response.data?.error || error.response.statusText}`;
+        } else if (error.request) {
+          errorMessage = 'No response from server. Check if backend is running.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
       return {
         success: false,
         accounts: [],
-        error: error instanceof Error ? error.message : 'Failed to fetch accounts'
+        error: errorMessage
       };
     }
   }
@@ -54,27 +120,6 @@ class RealGoogleAdsApiClient implements GoogleAdsClient {
     } catch (error) {
       console.error('Error fetching real metrics:', error);
       throw new Error('Failed to fetch metrics from Google Ads API');
-    }
-  }
-
-  // Test the connection to the Google Ads API
-  async testConnection(): Promise<{ success: boolean; accounts?: any[]; error?: string }> {
-    try {
-      const response = await axios.post(`${getApiBaseUrl()}/test-connection`);
-      if (response.data.success) {
-        return {
-          success: true,
-          accounts: response.data.accounts || []
-        };
-      } else {
-        return { success: false, error: 'Connection failed' };
-      }
-    } catch (error) {
-      console.error('Real API connection failed:', error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Network Error' 
-      };
     }
   }
 
@@ -123,10 +168,29 @@ class RealGoogleAdsApiClient implements GoogleAdsClient {
     refreshToken: string;
   }): Promise<boolean> {
     try {
-      const response = await axios.post(`${getApiBaseUrl()}/credentials`, credentials);
-      return response.data.success;
+      console.log('Saving credentials to:', getApiBaseUrl());
+      const response = await axios.post(`${getApiBaseUrl()}/credentials`, credentials, {
+        timeout: 10000,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log('Credentials save response:', response.data);
+      return response.data.success || false;
     } catch (error) {
       console.error('Error saving credentials:', error);
+      
+      if (axios.isAxiosError(error)) {
+        if (error.code === 'ECONNREFUSED') {
+          console.error('Cannot connect to backend server. Make sure the backend is running on port 3001.');
+        } else if (error.response) {
+          console.error(`Server error: ${error.response.status} - ${error.response.data?.error || error.response.statusText}`);
+        } else if (error.request) {
+          console.error('No response from server. Check if backend is running.');
+        }
+      }
+      
       return false;
     }
   }

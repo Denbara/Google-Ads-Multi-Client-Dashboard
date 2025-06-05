@@ -12,7 +12,6 @@ import AdminDashboard from './components/AdminDashboard';
 import { Loader2, Building } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { UserProvider } from './lib/UserContext';
-import { credentialsService } from './lib/credentialsService';
 
 // Home page component with client list
 const HomePage: React.FC = () => {
@@ -268,12 +267,9 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Check authentication and initialize credentials on load
+  // Check authentication on load
   useEffect(() => {
     const checkAuth = async () => {
-      // Initialize credentials service to load from server
-      await credentialsService.initialize();
-      
       // In a real app, this would check session/token
       // For now, we'll just simulate with a timeout
       setTimeout(() => {

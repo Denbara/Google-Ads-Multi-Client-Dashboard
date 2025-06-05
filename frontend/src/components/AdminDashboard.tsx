@@ -578,17 +578,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
           
           <TabsContent value="api" className="space-y-4">
             <ApiSettings 
-              initialCredentials={credentialsService.getCredentialsSync() || undefined}
+              initialCredentials={credentialsService.getCredentials() || undefined}
               onSave={async (credentials) => {
                 try {
                   // Store credentials securely using the credentials service
-                  const success = await credentialsService.saveCredentials(credentials);
+                  const success = credentialsService.saveCredentials(credentials);
                   
                   if (success) {
+                    // Also try to save to backend as backup (optional)
+                    try {
+                      await credentialsService.saveToBackend(credentials);
+                    } catch (backendError) {
+                      console.warn('Backend save failed, but localStorage save succeeded:', backendError);
+                    }
+                    
+                    // Reload the Google Ads service to use new credentials
+                    window.location.reload(); // Simple way to reinitialize services
+                    
                     // Show success message
                     toast({
                       title: "API Settings Saved",
-                      description: "Your Google Ads API credentials have been saved successfully.",
+                      description: "Your Google Ads API credentials have been saved successfully and will persist across sessions.",
                       variant: "default"
                     });
                   } else {

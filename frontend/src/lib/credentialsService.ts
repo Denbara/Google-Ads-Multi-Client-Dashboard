@@ -1,5 +1,5 @@
-// Service for handling API credentials via backend server
-// Credentials are now stored securely on the server instead of localStorage
+// Simple encryption/decryption utility for credentials
+// Credentials are stored securely in browser localStorage with encryption
 
 export interface ApiCredentials {
   clientId: string;
@@ -9,25 +9,87 @@ export interface ApiCredentials {
   managerId?: string;
 }
 
-// Function to get the API base URL
-const getApiBaseUrl = (): string => {
-  if (process.env.NODE_ENV === 'production') {
-    // In production, this should be replaced with your actual Heroku app URL
-    // The GitHub Actions workflow will update this automatically
-    return 'https://your-deployed-backend-url.com/api';
-  }
-  return 'http://localhost:3001/api';
-};
-
-// Service for securely handling API credentials via backend
+// Service for securely handling API credentials in localStorage
 class CredentialsService {
-  private credentials: ApiCredentials | null = null;
-  private isLoaded = false;
+  private readonly STORAGE_KEY = 'google_ads_credentials';
+  private readonly ENCRYPTION_KEY = 'dashboard_encryption_key_2024'; // Static key for browser encryption
 
-  // Save credentials to backend server
-  async saveCredentials(credentials: ApiCredentials): Promise<boolean> {
+  // Simple encryption function for localStorage
+  private encrypt(data: string): string {
+    const textToChars = (text: string) => text.split('').map(c => c.charCodeAt(0));
+    const byteHex = (n: number) => ("0" + Number(n).toString(16)).substr(-2);
+    
+    const applySaltToChar = (code: number): number => {
+      return textToChars(this.ENCRYPTION_KEY).reduce((a, b) => a ^ b, code);
+    };
+
+    return Array.from(data)
+      .map(c => textToChars(c)[0])
+      .map(applySaltToChar)
+      .map(byteHex)
+      .join('');
+  }
+
+  // Simple decryption function for localStorage
+  private decrypt(encoded: string): string {
+    const textToChars = (text: string) => text.split('').map(c => c.charCodeAt(0));
+    const applySaltToChar = (code: number): number => {
+      return textToChars(this.ENCRYPTION_KEY).reduce((a, b) => a ^ b, code);
+    };
+    
+    return encoded.match(/.{1,2}/g)
+      ?.map(hex => parseInt(hex, 16))
+      .map(applySaltToChar)
+      .map(charCode => String.fromCharCode(charCode))
+      .join('') || '';
+  }
+
+  // Save credentials to localStorage with encryption
+  saveCredentials(credentials: ApiCredentials): boolean {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/credentials`, {
+      const encryptedData = this.encrypt(JSON.stringify(credentials));
+      localStorage.setItem(this.STORAGE_KEY, encryptedData);
+      console.log('Credentials saved to localStorage successfully');
+      return true;
+    } catch (error) {
+      console.error('Error saving credentials to localStorage:', error);
+      return false;
+    }
+  }
+
+  // Get credentials from localStorage with decryption
+  getCredentials(): ApiCredentials | null {
+    try {
+      const encryptedData = localStorage.getItem(this.STORAGE_KEY);
+      if (!encryptedData) return null;
+      
+      const decryptedData = this.decrypt(encryptedData);
+      return JSON.parse(decryptedData) as ApiCredentials;
+    } catch (error) {
+      console.error('Error retrieving credentials from localStorage:', error);
+      return null;
+    }
+  }
+
+  // Check if credentials exist in localStorage
+  hasCredentials(): boolean {
+    return localStorage.getItem(this.STORAGE_KEY) !== null;
+  }
+
+  // Clear credentials from localStorage
+  clearCredentials(): void {
+    localStorage.removeItem(this.STORAGE_KEY);
+    console.log('Credentials cleared from localStorage');
+  }
+
+  // Auto-save credentials to backend server (optional, for backup)
+  async saveToBackend(credentials: ApiCredentials): Promise<boolean> {
+    try {
+      const apiBaseUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://your-deployed-backend-url.com/api'
+        : 'http://localhost:3001/api';
+
+      const response = await fetch(`${apiBaseUrl}/credentials`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -36,110 +98,31 @@ class CredentialsService {
       });
 
       if (response.ok) {
-        this.credentials = credentials;
-        this.isLoaded = true;
-        console.log('Credentials saved to server successfully');
+        console.log('Credentials also saved to backend server');
         return true;
       } else {
-        const error = await response.json();
-        console.error('Failed to save credentials to server:', error);
+        console.warn('Failed to save credentials to backend server (using localStorage only)');
         return false;
       }
     } catch (error) {
-      console.error('Error saving credentials to server:', error);
+      console.warn('Backend not available, using localStorage only:', error);
       return false;
     }
   }
 
-  // Get credentials from backend server
-  async getCredentials(): Promise<ApiCredentials | null> {
-    try {
-      // If we already loaded credentials in this session, return them
-      if (this.isLoaded && this.credentials) {
-        return this.credentials;
-      }
+  // Get credentials and also check if they're valid/complete
+  getValidCredentials(): ApiCredentials | null {
+    const credentials = this.getCredentials();
+    if (!credentials) return null;
 
-      // First check if credentials exist on the server
-      const checkResponse = await fetch(`${getApiBaseUrl()}/credentials`);
-      const checkData = await checkResponse.json();
-
-      if (!checkData.exists) {
-        this.isLoaded = true;
-        this.credentials = null;
-        return null;
-      }
-
-      // For security, we don't return the actual credentials from the server
-      // Instead, we indicate that they exist and the server will use them for API calls
-      // Return a placeholder that indicates credentials are available on server
-      this.credentials = {
-        clientId: 'stored_on_server',
-        clientSecret: 'stored_on_server',
-        developerToken: 'stored_on_server',
-        refreshToken: 'stored_on_server',
-      };
-      this.isLoaded = true;
-      return this.credentials;
-    } catch (error) {
-      console.error('Error retrieving credentials from server:', error);
-      this.isLoaded = true;
-      this.credentials = null;
+    // Check if all required fields are present
+    if (!credentials.clientId || !credentials.clientSecret || 
+        !credentials.developerToken || !credentials.refreshToken) {
+      console.warn('Stored credentials are incomplete');
       return null;
     }
-  }
 
-  // Synchronous version for backward compatibility (checks cached result)
-  getCredentialsSync(): ApiCredentials | null {
-    if (!this.isLoaded) {
-      // If not loaded yet, trigger async load
-      this.getCredentials();
-      return null;
-    }
-    return this.credentials;
-  }
-
-  // Check if credentials exist on server
-  async hasCredentials(): Promise<boolean> {
-    try {
-      const response = await fetch(`${getApiBaseUrl()}/credentials`);
-      const data = await response.json();
-      return data.exists || false;
-    } catch (error) {
-      console.error('Error checking credentials on server:', error);
-      return false;
-    }
-  }
-
-  // Synchronous version for backward compatibility
-  hasCredentialsSync(): boolean {
-    return this.isLoaded && this.credentials !== null;
-  }
-
-  // Clear credentials from server
-  async clearCredentials(): Promise<boolean> {
-    try {
-      const response = await fetch(`${getApiBaseUrl()}/credentials`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        this.credentials = null;
-        this.isLoaded = true;
-        console.log('Credentials cleared from server successfully');
-        return true;
-      } else {
-        console.error('Failed to clear credentials from server');
-        return false;
-      }
-    } catch (error) {
-      console.error('Error clearing credentials from server:', error);
-      return false;
-    }
-  }
-
-  // Load credentials on app startup
-  async initialize(): Promise<void> {
-    await this.getCredentials();
+    return credentials;
   }
 }
 

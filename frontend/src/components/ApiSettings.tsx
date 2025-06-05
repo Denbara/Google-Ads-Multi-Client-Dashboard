@@ -116,6 +116,10 @@ const ApiSettings: React.FC<ApiSettingsProps> = ({ onSave, initialCredentials })
       // First try with real API client
       try {
         console.log('Attempting to connect with real Google Ads API...');
+        
+        // First save credentials to the real client for this test
+        await googleAdsApiRealClient.saveCredentials(credentials);
+        
         const realResult = await googleAdsApiRealClient.fetchAccounts();
         
         if (realResult.success && realResult.accounts && realResult.accounts.length > 0) {

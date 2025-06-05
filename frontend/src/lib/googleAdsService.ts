@@ -57,15 +57,15 @@ class GoogleAdsService {
   }
 
   // Load API credentials from secure storage
-  private async loadCredentials() {
-    this.credentials = await credentialsService.getCredentials();
+  private loadCredentials() {
+    this.credentials = credentialsService.getValidCredentials();
     
     // If credentials are available, configure the API clients
     if (this.credentials) {
       // Configure mock client (for fallback)
       googleAdsApiClient.setCredentials(this.credentials);
       
-      // Configure real client and save credentials to server
+      // Configure real client and save credentials to server (optional backup)
       this.saveCredentialsToServer();
       
       // Test connection in background
@@ -77,11 +77,15 @@ class GoogleAdsService {
     console.log('Loaded credentials:', this.credentials ? 'Available' : 'Not available');
   }
   
-  // Save credentials to server-side API proxy
+  // Save credentials to server-side API proxy (optional backup)
   private async saveCredentialsToServer() {
     if (!this.credentials) return;
     
     try {
+      // Try to save to backend as backup, but don't fail if it's not available
+      await credentialsService.saveToBackend(this.credentials);
+      
+      // Also save to real client for API calls
       const result = await googleAdsApiRealClient.saveCredentials(this.credentials);
       console.log('Credentials saved to server:', result ? 'Success' : 'Failed');
     } catch (error) {
@@ -143,13 +147,8 @@ class GoogleAdsService {
   }
 
   // Check if API credentials are configured
-  async hasApiCredentials(): Promise<boolean> {
-    return !!this.credentials || await credentialsService.hasCredentials();
-  }
-
-  // Synchronous version for backward compatibility
-  hasApiCredentialsSync(): boolean {
-    return !!this.credentials || credentialsService.hasCredentialsSync();
+  hasApiCredentials(): boolean {
+    return !!this.credentials || credentialsService.hasCredentials();
   }
 
   // Authenticate with password
@@ -167,7 +166,7 @@ class GoogleAdsService {
   // Fetch metrics overview data
   async getMetricsOverview(period: TimePeriod): Promise<GoogleAdsMetrics> {
     // Use the real API client to fetch real data if credentials are available and connected
-    if (this.hasApiCredentialsSync() && this.isConnected) {
+    if (this.hasApiCredentials() && this.isConnected) {
       try {
         const selectedAccountId = googleAdsApiRealClient.getSelectedAccountId();
         if (!selectedAccountId) {
@@ -206,7 +205,7 @@ class GoogleAdsService {
   // Fetch conversion chart data
   async getConversionChartData(period: TimePeriod): Promise<ConversionData[]> {
     // Use the real API client to fetch real data if credentials are available and connected
-    if (this.hasApiCredentialsSync() && this.isConnected) {
+    if (this.hasApiCredentials() && this.isConnected) {
       try {
         const selectedAccountId = googleAdsApiRealClient.getSelectedAccountId();
         if (!selectedAccountId) {
@@ -233,7 +232,7 @@ class GoogleAdsService {
   // Fetch cost per lead chart data
   async getCostPerLeadChartData(period: TimePeriod): Promise<CostPerLeadData[]> {
     // Use the real API client to fetch real data if credentials are available and connected
-    if (this.hasApiCredentialsSync() && this.isConnected) {
+    if (this.hasApiCredentials() && this.isConnected) {
       try {
         const selectedAccountId = googleAdsApiRealClient.getSelectedAccountId();
         if (!selectedAccountId) {
@@ -260,7 +259,7 @@ class GoogleAdsService {
   // Fetch recent conversions
   async getRecentConversions(period: TimePeriod): Promise<ConversionDetail[]> {
     // Use the real API client to fetch real data if credentials are available and connected
-    if (this.hasApiCredentialsSync() && this.isConnected) {
+    if (this.hasApiCredentials() && this.isConnected) {
       try {
         const selectedAccountId = googleAdsApiRealClient.getSelectedAccountId();
         if (!selectedAccountId) {
